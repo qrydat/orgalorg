@@ -645,12 +645,29 @@ func connectAndLock(
 		}
 	}
 
+	heartbeatMilliseconds, err := strconv.Atoi(sendTimeout)
+	if err != nil {
+		return nil, hierr.Errorf(
+			err,
+			`can't use --send-timeout as heartbeat timeout`,
+		)
+	}
+
 	cluster, err := acquireDistributedLock(
 		lockFile,
 		runners,
 		addresses,
 		noLockFail,
 		noConnFail,
+		func(node *distributedLockNode) {
+			heartbeat(
+				time.Duration(
+					float64(heartbeatMilliseconds)*heartbeatTimeoutCoefficient,
+				)*time.Millisecond,
+				node,
+				canceler,
+			)
+		},
 	)
 	if err != nil {
 		return nil, hierr.Errorf(
@@ -660,21 +677,6 @@ func connectAndLock(
 	}
 
 	debugf(`global lock acquired on %d nodes`, len(cluster.nodes))
-
-	heartbeatMilliseconds, err := strconv.Atoi(sendTimeout)
-	if err != nil {
-		return nil, hierr.Errorf(
-			err,
-			`can't use --send-timeout as heartbeat timeout`,
-		)
-	}
-
-	cluster.runHeartbeats(
-		time.Duration(
-			float64(heartbeatMilliseconds)*heartbeatTimeoutCoefficient,
-		)*time.Millisecond,
-		canceler,
-	)
 
 	return cluster, nil
 }
